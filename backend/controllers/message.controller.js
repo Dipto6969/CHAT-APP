@@ -1,6 +1,6 @@
 import Conversation from "../models/conversation.model.js";
 import Message from "../models/message.model.js";
-// import { getReceiverSocketId, io } from "../socket/socket.js";
+import { getReceiverSocketId, io } from "../socket/socket.js";
 
 export const sendMessage = async (req, res) => {
 	try {
@@ -8,7 +8,6 @@ export const sendMessage = async (req, res) => {
 		const { id: receiverId } = req.params;
 		const senderId = req.user._id;
 
-		// Find or create conversation
 		let conversation = await Conversation.findOne({
 			participants: { $all: [senderId, receiverId] },
 		});
@@ -16,33 +15,35 @@ export const sendMessage = async (req, res) => {
 		if (!conversation) {
 			conversation = await Conversation.create({
 				participants: [senderId, receiverId],
-				messages: [],
 			});
 		}
 
-		// Create new message
 		const newMessage = new Message({
 			senderId,
 			receiverId,
 			message,
 		});
 
-        if (newMessage) {
-		conversation.messages.push(newMessage._id);
-        }
-        //socket.io will go here
-		// Save the message
-		//await newMessage.save();
+		if (newMessage) {
+			conversation.messages.push(newMessage._id);
+		}
 
-		// Update conversation with the new message
-		//await conversation.save();
+		// await conversation.save();
+		// await newMessage.save();
 
-        await Promise.all([conversation.save(), newMessage.save()]);
+		// this will run in parallel
+		await Promise.all([conversation.save(), newMessage.save()]);
 
-		// Respond with the new message
+		// SOCKET IO FUNCTIONALITY WILL GO HERE
+		const receiverSocketId = getReceiverSocketId(receiverId);
+		if (receiverSocketId) {
+			// io.to(<socket_id>).emit() used to send events to specific client
+			io.to(receiverSocketId).emit("newMessage", newMessage);
+		}
+
 		res.status(201).json(newMessage);
 	} catch (error) {
-		console.error("Error in sendMessage controller:", error.message);
+		console.log("Error in sendMessage controller: ", error.message);
 		res.status(500).json({ error: "Internal server error" });
 	}
 };
